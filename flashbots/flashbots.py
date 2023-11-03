@@ -1,3 +1,5 @@
+import asyncio
+
 import rlp
 import time
 from functools import reduce
@@ -16,7 +18,7 @@ from eth_account._utils.typed_transactions import (
 from eth_typing import HexStr
 from hexbytes import HexBytes
 from toolz import dissoc
-from web3 import Web3
+from web3 import AsyncWeb3
 from web3.exceptions import TransactionNotFound
 from web3.method import Method
 from web3.module import Module
@@ -48,11 +50,11 @@ class FlashbotsRPC:
 
 
 class FlashbotsBundleResponse:
-    w3: Web3
+    w3: AsyncWeb3
     bundle: List[SignedTxAndHash]
     target_block_number: int
 
-    def __init__(self, w3: Web3, txs: List[HexBytes], target_block_number: int):
+    def __init__(self, w3: AsyncWeb3, txs: List[HexBytes], target_block_number: int):
         self.w3 = w3
 
         def parse_tx(tx):
@@ -64,10 +66,10 @@ class FlashbotsBundleResponse:
         self.bundle = list(map(parse_tx, txs))
         self.target_block_number = target_block_number
 
-    def wait(self) -> None:
+    async def wait(self) -> None:
         """Waits until the target block has been reached"""
-        while self.w3.eth.block_number < self.target_block_number:
-            time.sleep(1)
+        while await self.w3.eth.block_number < self.target_block_number:
+            await asyncio.sleep(0.5)
 
     def receipts(self) -> List[TxReceipt]:
         """Returns all the transaction receipts from the submitted bundle"""
@@ -86,11 +88,11 @@ class FlashbotsBundleResponse:
 
 
 class FlashbotsPrivateTransactionResponse:
-    w3: Web3
+    w3: AsyncWeb3
     tx: SignedTxAndHash
     max_block_number: int
 
-    def __init__(self, w3: Web3, signed_tx: HexBytes, max_block_number: int):
+    def __init__(self, w3: AsyncWeb3, signed_tx: HexBytes, max_block_number: int):
         self.w3 = w3
         self.max_block_number = max_block_number
         self.tx = {
@@ -98,23 +100,23 @@ class FlashbotsPrivateTransactionResponse:
             "hash": self.w3.sha3(signed_tx),
         }
 
-    def wait(self) -> bool:
+    async def wait(self) -> bool:
         """Waits up to max block number, returns `True` if/when tx has been mined.
 
         If tx has not been mined by the time the current block > max_block_number, returns `False`."""
         while True:
             try:
-                self.w3.eth.get_transaction(self.tx["hash"])
+                await self.w3.eth.get_transaction(self.tx["hash"])
                 return True
             except TransactionNotFound:
-                if self.w3.eth.block_number > self.max_block_number:
+                if await self.w3.eth.block_number > self.max_block_number:
                     return False
                 time.sleep(1)
 
-    def receipt(self) -> Optional[TxReceipt]:
+    async def receipt(self) -> Optional[TxReceipt]:
         """Gets private tx receipt if tx has been mined. If tx is not mined within `max_block_number` period, returns None."""
-        if self.wait():
-            return self.w3.eth.get_transaction_receipt(self.tx["hash"])
+        if await self.wait():
+            return await self.w3.eth.get_transaction_receipt(self.tx["hash"])
         else:
             return None
 
@@ -123,7 +125,7 @@ class Flashbots(Module):
     signed_txs: List[HexBytes]
     response: Union[FlashbotsBundleResponse, FlashbotsPrivateTransactionResponse]
 
-    def sign_bundle(
+    async def sign_bundle(
         self,
         bundled_transactions: List[
             Union[FlashbotsBundleTx, FlashbotsBundleRawTx, FlashbotsBundleDictTx]
@@ -146,12 +148,12 @@ class Flashbots(Module):
                 if tx.get("nonce") is None:
                     tx["nonce"] = nonces.get(
                         signer.address,
-                        self.web3.eth.get_transaction_count(signer.address),
+                        await self.w3.eth.get_transaction_count(signer.address),
                     )
                 nonces[signer.address] = tx["nonce"] + 1
 
                 if "gas" not in tx:
-                    tx["gas"] = self.web3.eth.estimateGas(tx)
+                    tx["gas"] = await self.w3.eth.estimate_gas(tx)
 
                 signed_tx = signer.sign_transaction(tx)
                 signed_transactions.append(signed_tx.rawTransaction)
@@ -191,7 +193,7 @@ class Flashbots(Module):
 
                 unsigned_tx = serializable_unsigned_transaction_from_dict(tx_dict)
                 raw = encode_transaction(unsigned_tx, vrs=(v, r, s))
-                assert self.web3.keccak(raw) == tx["hash"]
+                assert self.w3.keccak(raw) == tx["hash"]
                 signed_transactions.append(raw)
 
         return signed_transactions
@@ -202,7 +204,7 @@ class Flashbots(Module):
             tx_hex = f"0x{tx_hex}"
         return tx_hex
 
-    def send_raw_bundle_munger(
+    async def send_raw_bundle_munger(
         self,
         signed_bundled_transactions: List[HexBytes],
         target_block_number: int,
@@ -234,17 +236,18 @@ class Flashbots(Module):
     )
     send_raw_bundle = sendRawBundle
 
-    def send_bundle_munger(
+    async def send_bundle_munger(
         self,
         bundled_transactions: List[Union[FlashbotsBundleTx, FlashbotsBundleRawTx]],
         target_block_number: int,
         opts: Optional[FlashbotsOpts] = None,
     ) -> List[Any]:
-        signed_txs = self.sign_bundle(bundled_transactions)
+        signed_txs = await self.sign_bundle(bundled_transactions)
         self.response = FlashbotsBundleResponse(
-            self.web3, signed_txs, target_block_number
+            self.w3, signed_txs, target_block_number
         )
-        return self.send_raw_bundle_munger(signed_txs, target_block_number, opts)
+        return await self.send_raw_bundle_munger(signed_txs, target_block_number, opts)
+
 
     def raw_bundle_formatter(self, resp) -> Any:
         return lambda _: resp.response
@@ -276,7 +279,7 @@ class Flashbots(Module):
     )
     cancel_bundles = cancelBundles
 
-    def simulate(
+    async def simulate(
         self,
         bundled_transactions: List[Union[FlashbotsBundleTx, FlashbotsBundleRawTx]],
         block_tag: Union[int, str] = None,
@@ -285,25 +288,25 @@ class Flashbots(Module):
     ):
         # interpret block number from tag
         block_number = (
-            self.web3.eth.block_number
+            await self.w3.eth.block_number
             if block_tag is None or block_tag == "latest"
             else block_tag
         )
 
         # sets evm params
-        evm_block_number = self.web3.toHex(block_number)
+        evm_block_number = self.w3.to_hex(block_number)
         evm_block_state_number = (
-            self.web3.toHex(state_block_tag)
+            self.w3.to_hex(state_block_tag)
             if state_block_tag is not None
-            else self.web3.toHex(block_number - 1)
+            else self.w3.to_hex(block_number - 1)
         )
         evm_timestamp = (
             block_timestamp
             if block_timestamp is not None
-            else self.extrapolate_timestamp(block_number, self.web3.eth.block_number)
+            else self.extrapolate_timestamp(block_number, await self.w3.eth.block_number)
         )
 
-        signed_bundled_transactions = self.sign_bundle(bundled_transactions)
+        signed_bundled_transactions = await self.sign_bundle(bundled_transactions)
         # calls evm simulator
         call_result = self.call_bundle(
             signed_bundled_transactions,
@@ -322,11 +325,11 @@ class Flashbots(Module):
             ),
         }
 
-    def extrapolate_timestamp(self, block_tag: int, latest_block_number: int):
+    async def extrapolate_timestamp(self, block_tag: int, latest_block_number: int):
         block_delta = block_tag - latest_block_number
         if block_delta < 0:
             raise Exception("block extrapolation negative")
-        return self.web3.eth.get_block(latest_block_number)["timestamp"] + (
+        return (await self.w3.eth.get_block(latest_block_number))["timestamp"] + (
             block_delta * SECONDS_PER_BLOCK
         )
 
@@ -355,8 +358,8 @@ class Flashbots(Module):
         json_rpc_method=FlashbotsRPC.eth_callBundle, mungers=[call_bundle_munger]
     )
 
-    def get_user_stats_munger(self) -> List:
-        return [{"blockNumber": hex(self.web3.eth.blockNumber)}]
+    async def get_user_stats_munger(self) -> List:
+        return [{"blockNumber": hex(await self.w3.eth.block_number)}]
 
     getUserStats: Method[Callable[[Any], Any]] = Method(
         json_rpc_method=FlashbotsRPC.flashbots_getUserStats,
@@ -393,7 +396,7 @@ class Flashbots(Module):
 
     # sends private transaction
     # returns tx hash
-    def send_private_transaction_munger(
+    async def send_private_transaction_munger(
         self,
         transaction: Union[FlashbotsBundleTx, FlashbotsBundleRawTx],
         max_block_number: Optional[int] = None,
@@ -412,14 +415,14 @@ class Flashbots(Module):
             )
         if max_block_number is None:
             # get current block num, add 25
-            current_block = self.web3.eth.block_number
+            current_block = await self.w3.eth.block_number
             max_block_number = current_block + 25
         params = {
             "tx": self.to_hex(signed_transaction),
             "maxBlockNumber": max_block_number,
         }
         self.response = FlashbotsPrivateTransactionResponse(
-            self.web3, signed_transaction, max_block_number
+            self.w3, signed_transaction, max_block_number
         )
         return [params]
 

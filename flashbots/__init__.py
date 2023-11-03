@@ -2,7 +2,7 @@ from typing import Union, Optional
 
 from eth_account.signers.local import LocalAccount
 from eth_typing import URI
-from web3 import Web3
+from web3 import AsyncWeb3
 from web3.middleware import geth_poa_middleware
 from web3._utils.module import attach_modules
 
@@ -14,7 +14,7 @@ DEFAULT_FLASHBOTS_RELAY = "https://relay.flashbots.net"
 
 
 def flashbot(
-    w3: Web3,
+    w3: AsyncWeb3,
     signature_account: LocalAccount,
     endpoint_uri: Optional[Union[URI, str]] = None,
 ):
