@@ -33,7 +33,6 @@ from .types import (
     TxReceipt,
 )
 
-
 SECONDS_PER_BLOCK = 12
 
 
@@ -126,10 +125,10 @@ class Flashbots(Module):
     response: Union[FlashbotsBundleResponse, FlashbotsPrivateTransactionResponse]
 
     async def sign_bundle(
-        self,
-        bundled_transactions: List[
-            Union[FlashbotsBundleTx, FlashbotsBundleRawTx, FlashbotsBundleDictTx]
-        ],
+            self,
+            bundled_transactions: List[
+                Union[FlashbotsBundleTx, FlashbotsBundleRawTx, FlashbotsBundleDictTx]
+            ],
     ) -> List[HexBytes]:
         """Given a bundle of signed and unsigned transactions, it signs them all"""
         nonces: Dict[HexStr, Nonce] = {}
@@ -205,10 +204,10 @@ class Flashbots(Module):
         return tx_hex
 
     async def send_raw_bundle_munger(
-        self,
-        signed_bundled_transactions: List[HexBytes],
-        target_block_number: int,
-        opts: Optional[FlashbotsOpts] = None,
+            self,
+            signed_bundled_transactions: List[HexBytes],
+            target_block_number: int,
+            opts: Optional[FlashbotsOpts] = None,
     ) -> List[Any]:
         """Given a raw signed bundle, it packages it up with the block number and the timestamps"""
 
@@ -237,17 +236,16 @@ class Flashbots(Module):
     send_raw_bundle = sendRawBundle
 
     async def send_bundle_munger(
-        self,
-        bundled_transactions: List[Union[FlashbotsBundleTx, FlashbotsBundleRawTx]],
-        target_block_number: int,
-        opts: Optional[FlashbotsOpts] = None,
+            self,
+            bundled_transactions: List[Union[FlashbotsBundleTx, FlashbotsBundleRawTx]],
+            target_block_number: int,
+            opts: Optional[FlashbotsOpts] = None,
     ) -> List[Any]:
         signed_txs = await self.sign_bundle(bundled_transactions)
         self.response = FlashbotsBundleResponse(
             self.w3, signed_txs, target_block_number
         )
         return await self.send_raw_bundle_munger(signed_txs, target_block_number, opts)
-
 
     def raw_bundle_formatter(self, resp) -> Any:
         return lambda _: resp.response
@@ -260,8 +258,8 @@ class Flashbots(Module):
     send_bundle = sendBundle
 
     def cancel_bundles_munger(
-        self,
-        replacement_uuid: str,
+            self,
+            replacement_uuid: str,
     ) -> List[Any]:
         return [
             {
@@ -280,11 +278,11 @@ class Flashbots(Module):
     cancel_bundles = cancelBundles
 
     async def simulate(
-        self,
-        bundled_transactions: List[Union[FlashbotsBundleTx, FlashbotsBundleRawTx]],
-        block_tag: Union[int, str] = None,
-        state_block_tag: int = None,
-        block_timestamp: int = None,
+            self,
+            bundled_transactions: List[Union[FlashbotsBundleTx, FlashbotsBundleRawTx]],
+            block_tag: Union[int, str] = None,
+            state_block_tag: int = None,
+            block_timestamp: int = None,
     ):
         # interpret block number from tag
         block_number = (
@@ -330,18 +328,18 @@ class Flashbots(Module):
         if block_delta < 0:
             raise Exception("block extrapolation negative")
         return (await self.w3.eth.get_block(latest_block_number))["timestamp"] + (
-            block_delta * SECONDS_PER_BLOCK
+                block_delta * SECONDS_PER_BLOCK
         )
 
     def call_bundle_munger(
-        self,
-        signed_bundled_transactions: List[
-            Union[FlashbotsBundleTx, FlashbotsBundleRawTx]
-        ],
-        evm_block_number,
-        evm_block_state_number,
-        evm_timestamp,
-        opts: Optional[FlashbotsOpts] = None,
+            self,
+            signed_bundled_transactions: List[
+                Union[FlashbotsBundleTx, FlashbotsBundleRawTx]
+            ],
+            evm_block_number,
+            evm_block_state_number,
+            evm_timestamp,
+            opts: Optional[FlashbotsOpts] = None,
     ) -> Any:
         """Given a raw signed bundle, it packages it up with the block number and the timestamps"""
         inpt = [
@@ -374,7 +372,7 @@ class Flashbots(Module):
     get_user_stats_v2 = getUserStatsV2
 
     def get_bundle_stats_munger(
-        self, bundle_hash: Union[str, int], block_number: Union[str, int]
+            self, bundle_hash: Union[str, int], block_number: Union[str, int]
     ) -> List:
         if isinstance(bundle_hash, int):
             bundle_hash = hex(bundle_hash)
@@ -397,9 +395,9 @@ class Flashbots(Module):
     # sends private transaction
     # returns tx hash
     async def send_private_transaction_munger(
-        self,
-        transaction: Union[FlashbotsBundleTx, FlashbotsBundleRawTx],
-        max_block_number: Optional[int] = None,
+            self,
+            transaction: Union[FlashbotsBundleTx, FlashbotsBundleRawTx],
+            max_block_number: Optional[int] = None,
     ) -> Any:
         """Sends a single transaction to Flashbots.
 
@@ -436,8 +434,8 @@ class Flashbots(Module):
     # cancels private tx given pending private tx hash
     # returns True if successful, False otherwise
     def cancel_private_transaction_munger(
-        self,
-        tx_hash: str,
+            self,
+            tx_hash: str,
     ) -> bool:
         """Stops a private transaction from being sent to miners by Flashbots.
 
